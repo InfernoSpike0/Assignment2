@@ -16,9 +16,9 @@ local player = {
     --New
     hasDash = true,
     isDashing = false,
-    dashDuration = 1, -- uptime
+    dashDuration = 1, -- uptime, declaration, change elsewhere
     savedVelocity = 0,
-    dashCooldown = 1 -- downtime
+    dashCooldown = 1 -- downtime, declaration, change elsewhere
 }
 
 local GRAVITY = vec2.new(0, 800)
@@ -39,7 +39,7 @@ function player.handleInput(dt)
     local speed = 200
     local moveInput = vec2.new(0, 0)
 
-    if player.isGrounded then
+    if player.isGrounded and (player.isDashing == false) then
         if (love.keyboard.isDown("left")) or (love.keyboard.isDown("a")) then
             player.velocity.x = -speed
             moveInput.x = moveInput.x - 1
@@ -51,7 +51,9 @@ function player.handleInput(dt)
         end
     end
     
-        local desiredAccel = vec2.mul(moveInput, ACCEL)
+    local airControl = player.isGrounded and 1.0 or 0.75
+    local desiredAccel = vec2.mul(moveInput, ACCEL * airControl)
+
     player.acceleration.x = desiredAccel.x
 
     if love.keyboard.isDown("space") then
@@ -74,15 +76,16 @@ function player.handleInput(dt)
     player.isDashing = true
     player.hasDash = false
     player.dashDuration = 0.15
-    player.dashCooldown = 0.8
-    player.savedVelocity = player.velocity.x
+    player.dashCooldown = 1.85
 
     if love.keyboard.isDown("right") or love.keyboard.isDown("d") then
         player.velocity.x = 800
         player.velocity.y = 0
+        player.savedVelocity = 400
     elseif love.keyboard.isDown("left") or love.keyboard.isDown("a") then
         player.velocity.x = -800
         player.velocity.y = 0
+        player.savedVelocity = -400
     end
 end
 
