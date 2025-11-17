@@ -1,40 +1,45 @@
-local player = require("player")
+local player    = require("player")
 local platforms = require("platform")
 local collision = require("collision")
-local vec2 = require("vector2")
-local dbg = require("debugging") -- Go to debugging.lua to switch on/off
-local sprite = require("sprite")
+local vec2      = require("vector2")
+local dbg       = require("debugging") -- Go to debugging.lua to switch on/off
+local sprite    = require("sprite")
+local chicken   = require("chicken")
+local camera    = require("camera")
 
--- Look for comments with "--> DO SOMETHING HERE" and complete the tasks within camera.lua and main.lua
--- NEW:
-local camera = require("camera")
-
------------------------------------------------
 function love.load()
     love.window.setTitle("Step 9: Camera")
     love.window.setMode(800, 600)
+
     player.load()
 
+    -- load chicken sprites
+    chicken.loadAssets()
+    chicken.spawn(500, 550 - 64)
+    chicken.spawn(650, 550 - 64)
+
+
+    -- sloped platform
     platforms.createPolygonPlatform({
         {x=100, y=600 - 4*64},
         {x=300, y=600 - 2*64},
         {x=500, y=600 - 2*64},
         {x=500, y=600 - 4*64}},
         {
-            "sticky",nil, "bounce",nil
+            "sticky", nil, "bounce", nil
         }
     )
 
+    -- ground platform
     platforms.createPolygonPlatform({
-        {x=0, y=600},
+        {x=0,   y=600},
         {x=800, y=600},
         {x=800, y=550},
-        {x=0, y=550}},
+        {x=0,   y=550}},
         {
             nil, "bounce", nil, "bounce"
         }
     )
-
 end
 
 function love.keypressed(key)
@@ -50,49 +55,31 @@ function love.update(dt)
 
     local screenWidth, screenHeight = love.graphics.getDimensions()
 
-    -- update the camera
-    -- center the camera on the player position
-    --     e.g. camera.centerOn(player.position, screenWidth, screenHeight)
-    -- to center the player in the screen, we need to offset by half the player size
-    -- so the player is in the center of the screen, not the top-left corner
+    -- camera target = player center
+    local target = vec2.add(player.position, vec2.mul(player.size, 0.5))
+    camera.centerOn(target, screenWidth, screenHeight)
+    -- (later you can switch this to camera.checkDeadzone if needed)
 
-    --> DO SOMETHING HERE
-    -- define a target position for the camera to follow
-    -- usually this is the player position offset by half the player size
-    -- so the player is in the center of the screen, not the top-left corner
-    --> target = PlayerPosition + 0.5 * PlayerSize
-
-    target = vec2.new(0,0)  --< fix this!!!!
-    target = vec2.add(player.position, vec2.mul(player.size, 0.5)) --<< correct
-
-    -- set the camera to center on the target
-    -- this is sometimes called the "look-at" point
-    camera.centerOn(target,  screenWidth, screenHeight)
-    
+    -- update all chickens (AI + lasers)
+    chicken.updateAll(dt, player)
 end
 
-
 function love.draw()
-    
-    -- attach the camera
-    -- anything drawn between attach/detach will be transformed by the camera
-    -- anything outside will be drawn in screen space (like UI)
+    -- world space
     camera.attach()
-        -- Draw everything in GameWorld coordinates here 
+        platforms.draw()
+        player.draw()
 
-        platforms.draw()  -- draw the platforms 
-        player.draw()     -- draw the player 
+        -- chicken enemies + their eye lasers + debug FOV
+        chicken.drawAll()
 
         dbg.drawPlatforms(platforms)
         dbg.drawPlayerState(player)
     camera.detach()
 
-    -- Draw everything in Screen space coordinates (pixels) here
-    -- UI elements here (like health, score)
+    -- screen space (UI)
     love.graphics.print("Step 9: Camera ", 10, 10)
 end
-    
-
 
 --[[
 Challenge Tasks
@@ -106,5 +93,4 @@ Challenge Tasks
 --    usage: e.g. camera.checkDeadzone(target, {x=200, y=100}, screenWidth, screenHeight)
 --    use this instead of camera.centerOn in love.update
 -- 4. add zoom in/out functionality to the camera (change camera.scale) based on player input
-
 --]]
