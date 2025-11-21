@@ -2,7 +2,7 @@ local player    = require("player")
 local platforms = require("platform")
 local collision = require("collision")
 local vec2      = require("vector2")
-local dbg       = require("debugging") -- Go to debugging.lua to switch on/off
+local dbg       = require("debugging") 
 local sprite    = require("sprite")
 local chicken   = require("chicken")
 local camera    = require("camera")
@@ -45,8 +45,16 @@ end
 function love.keypressed(key)
     if key == "f1" then
         dbg.enabled = not dbg.enabled
+    elseif key == "e" then
+    player.fireBullet()
+elseif key == "r" or key == "m" then
+    player.fireMissile()
+elseif key == "t" then
+    player.setTarget(chicken.list)
+    
     end
 end
+
 
 -- update everything here
 function love.update(dt)

@@ -1,19 +1,17 @@
--- chicken.lua
 local vec2   = require("vector2")
 local sprite = require("sprite")
 local dbg    = require("debugging")
 
 local chicken = {
-    list   = {},
-    lasers = {},
-    sprites = {},
+    list       = {},
+    lasers     = {},
+    sprites    = {},
     laserImage = nil,
     laserOrigin = { x = 0, y = 0 }
 }
 
 
 -- ASSETS
-
 function chicken.loadAssets()
     -- idle and run sprite sheets
     local idleSheet = sprite.loadSprite("assets/idle3.png", 64, 64)
@@ -22,7 +20,7 @@ function chicken.loadAssets()
     chicken.sprites.idle = idleSheet
     chicken.sprites.run  = runSheet
 
-    -- laser sprite (ChickenBlast.png), drawn instead of red line
+    -- laser sprite 
     chicken.laserImage = love.graphics.newImage("assets/ChickenBlast.png")
     chicken.laserOrigin.x = chicken.laserImage:getWidth()  / 2
     chicken.laserOrigin.y = chicken.laserImage:getHeight() / 2
@@ -37,7 +35,10 @@ function chicken.spawn(x, y)
     e.position   = vec2.new(x, y)
     e.size       = vec2.new(64, 64)
     e.velocity   = vec2.new(0, 0)
-    e.direction  = vec2.new(1, 0)     -- facing right
+    e.direction  = vec2.new(1, 0)    
+
+   
+    e.hp         = 5
 
     -- ground-locked Y so chickens don't float
     e.groundY = y
@@ -52,9 +53,8 @@ function chicken.spawn(x, y)
     e.viewAngle  = math.rad(60)
 
     -- behaviours / state
-    -- UPON CREATION: randomly choose IDLE or WANDER
     e.state = (math.random() < 0.5) and "IDLE" or "WANDER"
-    e.behaviour = nil    -- "B1","B2","B3" when triggered
+    e.behaviour = nil    
 
     -- wandering parameters
     e.moveSpeed            = 80
@@ -110,6 +110,8 @@ local function pickTriggeredBehaviour(e)
     e.state = "TRIGGERED"
 end
 
+
+-- LASERS FROM EYES 
 
 local function shootLaser(e)
     local center = vec2.add(e.position, vec2.mul(e.size, 0.5))
@@ -210,10 +212,10 @@ local function updateEnemy(e, dt, player)
         local toPlayer = vec2.sub(playerCenter, enemyCenter)
         local towards  = vec2.normalize(toPlayer)
 
-        -- always aim direction fully at player for FOV + lasers
+        -- always aim at player for FOV + lasers
         e.direction = towards
 
-        -- horizontal movement only (no flying)
+        -- horizontal movement only
         local horizontalDir = (playerCenter.x >= enemyCenter.x) and 1 or -1
 
         if e.behaviour == "B1" then
@@ -262,14 +264,14 @@ local function updateEnemy(e, dt, player)
 end
 
 
--- DRAW ENEMY 
+-- DRAW ENEMY (sprite + geometry + debug)
 
 local function drawEnemy(e)
     local flip = e.direction.x < 0
 
-
-    -- MAIN LOOK
-
+  
+    -- MAIN LOOK: sprite + geometry primitives
+    
     love.graphics.setColor(1,1,1)
     sprite.drawAnimation(e.currentAnim, e.position.x, e.position.y, flip)
 
@@ -287,8 +289,9 @@ local function drawEnemy(e)
         10, 14
     )
 
-
-    -- DEBUG VIEW 
+   
+    -- DEBUG VIEW (bounds, direction, view cone)
+    
     if not dbg.enabled then return end
 
     -- AABB bounds
@@ -303,11 +306,11 @@ local function drawEnemy(e)
         col = {0,1,0}
     elseif e.state == "TRIGGERED" then
         if e.behaviour == "B1" then
-            col = {1,1,0} -- yellow for B1
+            col = {1,1,0}   -- yellow
         elseif e.behaviour == "B2" then
-            col = {1,0.5,0} -- orange for B2
+            col = {1,0.5,0} -- orange
         elseif e.behaviour == "B3" then
-            col = {1,0,0} -- red for B3
+            col = {1,0,0}   -- red
         else
             col = {1,0,0}
         end
@@ -315,10 +318,10 @@ local function drawEnemy(e)
 
     -- FOV polygon
     local baseAngle = math.atan2(e.direction.y, e.direction.x)
-    local half = e.viewAngle * 0.5
-    local a1 = baseAngle - half
-    local a2 = baseAngle + half
-    local r  = e.viewRadius
+    local half      = e.viewAngle * 0.5
+    local a1        = baseAngle - half
+    local a2        = baseAngle + half
+    local r         = e.viewRadius
 
     love.graphics.setColor(col[1], col[2], col[3], 0.25)
     love.graphics.polygon("fill",
@@ -337,12 +340,90 @@ local function drawEnemy(e)
 end
 
 
--- PUBLIC API
+-- UPDATE WITH DAMAGE/HP/EXPLOSIONS
 
 function chicken.updateAll(dt, player)
-    for _, e in ipairs(chicken.list) do
+    local bullets  = player.bullets  or {}
+    local missiles = player.missiles or {}
+
+    -- iterate backwards so we can remove chickens
+    for ei = #chicken.list, 1, -1 do
+        local e = chicken.list[ei]
+
         updateEnemy(e, dt, player)
+
+        -- simple AABB for hits
+        local ex, ey = e.position.x, e.position.y
+        local ew, eh = e.size.x,    e.size.y
+
+       
+        -- BULLET DAMAGE (weak)
+        
+        for bi = #bullets, 1, -1 do
+            local b = bullets[bi]
+            if b.pos.x > ex and b.pos.x < ex + ew and
+               b.pos.y > ey and b.pos.y < ey + eh then
+
+                e.hp = e.hp - 1
+                table.remove(bullets, bi)
+
+                if e.hp <= 0 then
+                    -- clear targeting if this was the target
+                    if player.missileTarget
+                        and player.missileTarget.type == "enemy"
+                        and player.missileTarget.enemy == e then
+                        player.missileTarget = nil
+                        player.targetRay = nil
+                    end
+                    table.remove(chicken.list, ei)
+                    e = nil
+                    break
+                end
+            end
+        end
+
+        if e == nil then
+            -- this chicken was killed by a bullet
+            goto continue_chicken
+        end
+
+        
+        -- MISSILE DAMAGE (stronger, with explosion)
+        
+        for mi = #missiles, 1, -1 do
+            local m = missiles[mi]
+            local mx, my = m.pos.x, m.pos.y
+
+            if mx > ex and mx < ex + ew and
+               my > ey and my < ey + eh then
+
+                e.hp = e.hp - 2
+
+                -- spawn explosion at missile hit position
+                table.insert(player.explosions, {
+                    pos  = vec2.copy(m.pos),
+                    life = 0.3
+                })
+
+                table.remove(missiles, mi)
+
+                if e.hp <= 0 then
+                    if player.missileTarget
+                        and player.missileTarget.type == "enemy"
+                        and player.missileTarget.enemy == e then
+                        player.missileTarget = nil
+                        player.targetRay = nil
+                    end
+                    table.remove(chicken.list, ei)
+                    e = nil
+                    break
+                end
+            end
+        end
+
+        ::continue_chicken::
     end
+
     chicken.updateLasers(dt)
 end
 
